@@ -1,0 +1,694 @@
+---
+title: "Global Refugee Movement: A Focus on Asian and African Migration and Influence"
+output: pdf_document
+date: "2025-03-06"
+---
+
+
+
+
+# 1.Executive Summary
+
+
+"As we were examining the refugee data set, we wondered why the U.S. would be a preferred destination compared to other countries for refugees. Moreover, what were the core driving factors behind refugees from Myanmar, Iraq, Bhutan, Somalia, and Iran migrating away from their homelands?"
+
+This analysis examines refugee displacement trends from the top five countries—Myanmar (Burma), Iraq, Bhutan, Somalia, and Iran—between 2008 and 2015. The study identifies political and economic factors as primary drivers of migration, with key distinctions across regions.
+
+Myanmar saw the highest refugee outflows due to military dictatorship and ethnic persecution, while Somalia's ongoing civil war and economic collapse fueled displacement. Bhutan’s Lhotshampa refugees faced ethnic cleansing and systemic exclusion. Iraq and Iran, heavily impacted by U.S. sanctions and war-induced economic instability, experienced fluctuating migration patterns tied to financial crises.
+
+The 2008 global financial crisis disproportionately affected Iraq and Iran, intensifying economic hardship, whereas 2015 was marked by heightened political instability in Bhutan, Somalia, and Myanmar. While refugee resettlements increased overall in 2015, some nations—such as Iraq and Iran—witnessed declines, likely due to policy shifts and border restrictions.
+
+The findings underscore the interplay between political repression, economic downturns, and forced migration, with varying degrees of influence shaping refugee movements over time.
+
+# 2. Data Cleaning
+
+## 2.1. Main issues addressed 
+
+**Non-numeric values**
+
+The dataset contained non-numeric values such as -, X, and D. These values indicate missing data and were replaced with NA to handle them appropriately in further analysis. 
+
+**Non-countries**
+
+The dataset included rows for continents (e.g., Africa, Asia), unknown regions, and a total row. These rows were removed to focus only on country-level data. 
+
+**Inconsistent country names**
+
+The country names were not consistent, with multiple variations for the same country (e.g., "North Korea", "Korea, North", etc.). The countrycode package was used to standardize country names to ISO3 codes and then back to consistent country names. 
+
+**Replacing non-Numeric Values**
+
+The mutate and across functions were used to replace -, X, and D with NA. 
+
+**Excluding non-countries**
+
+The filter function removed rows that corresponded to continents, unknown regions, and the total row to ensure only country-level data remained. 
+
+**Standardizing Country Names**
+
+The countrycode package was utilized to convert inconsistent country names to ISO3 codes and then back to consistent country names. The custom_match argument helped resolve specific cases like "Korea, North". 
+
+**Converting Year to Numeric**
+
+The Year column undergoes a refinement process to remove non-numeric characters. Once cleaned, the values are converted into a numeric format. This ensures the Year column is appropriately prepared for quantitative analysis.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r Year-numeric-conversion-and-refugee-summary-by-year}
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(zoo)
+
+# Load the dataset
+df <- read.csv("data/refugee.csv", stringsAsFactors = FALSE)
+
+# Define list of continent names
+continents <- c("Africa", "Asia", "Europe", 
+                "North America", "Oceania", "South America", "Unknown")
+
+# Create a new "Continent" column
+df <- df %>%
+  mutate(Continent = ifelse(Continent.Country.of.Nationality %in% continents, 
+                            Continent.Country.of.Nationality, NA))
+
+# Forward fill continent names downwards
+df$Continent <- zoo::na.locf(df$Continent, na.rm = FALSE)
+
+# Keep only country rows (remove original continent rows)
+df <- df %>%
+  filter(!(Continent.Country.of.Nationality %in% continents)) %>%
+  rename(Country = Continent.Country.of.Nationality)
+
+# Convert wide format to long format
+df_long <- df %>%
+  pivot_longer(cols = -c(Country, Continent), names_to = "Year", values_to = "Count")
+
+# Clean and convert Year and Count to numeric
+df_long <- df_long %>%
+  mutate(Year = as.numeric(gsub("[^0-9]", "", Year)),  
+         # Remove non-numeric characters
+         Count = gsub(",", "", Count),  # Remove commas
+         Count = ifelse(Count %in% c("D", "X", "-"), "0", Count),  
+         # Replace non-numeric values with 0
+         Count = as.numeric(Count))  # Convert to numeric
+
+# Ensure the "data" folder exists before saving the file
+if (!dir.exists("data")) {
+  dir.create("data")
+}
+
+# Show the data
+print(df_long)
+
+```
+
+```{r Install-the-ISO3C-country-code-package}
+
+# Load libraries
+library(dplyr)
+library(countrycode)
+```
+
+```{r Identify-the-country-codes-and-normalize-the-country-names-and-continents}
+# Convert country names to ISO3 codes
+df_long <- df_long %>%
+  mutate(
+    ISO3 = countrycode(Country, "country.name", "iso3c"),  # Convert to ISO 3166-1 alpha-3
+    Continent_Standardized = countrycode(Country, "country.name", "continent")  
+    # Standardize continent
+  )
+
+# Display countries that could not be matched
+unmatched_countries <- df_long %>%
+  filter(is.na(ISO3)) %>%
+  select(Country) %>%
+  distinct()
+
+print("Unmatched country names:")
+print(unmatched_countries)
+
+# Display the cleaned and grouped data
+print(df_long)
+
+```
+
+```{r Remove-rows-do-not-match- the-ISO3C-codes}
+# Remove rows where ISO3 is NA (countries that could not be matched)
+df_long <- df_long %>%
+  filter(!is.na(ISO3))
+
+# Display the cleaned and standardized data
+print(df_long)
+
+# Save the cleaned dataset to a CSV file in the "data" folder
+write.csv(df_long, "data/refugee_cleaned_iso3.csv", row.names = FALSE)
+
+# Print confirmation message
+print("Final cleaned data saved as data/refugee_cleaned_iso3.csv")
+
+# Show the entire dataset
+print(df_long)
+```
+
+```{r Omit-the-Contintent-column}
+# Remove the 'Continent' column from the cleaned dataset
+df_long_cleaned <- df_long %>%
+  select(-Continent)
+
+# Display the entire cleaned dataset without the 'Continent' column
+print(df_long_cleaned)
+
+
+```
+
+```{r saving-the-cleaned-data}
+# Save the cleaned dataset (without Continent column) to a CSV file
+write.csv(df_long_cleaned, "data/refugee_cleaned_dataset.csv", row.names = FALSE)
+
+# Print confirmation message
+print("Cleaned data without Continent column saved as refugee_cleaned_dataset.csv")
+```
+# 3.Data Summarization and Visualization 
+
+To effectively tell the story using the refugee dataset, we can break it down into three key insights: Global Refugee Movements, Top 5 home countries with the most refugees, and Yearly Trends. Each insight will be visually represented in a way that helps emphasize the patterns, disparities, and trends across the years. 
+
+## a. Global Refugee Movements in 2008 and 2015 
+
+From 2006 to 2015, refugee movements around the world were shaped by conflicts, economic downturns, and political instability, with Asia and Africa having the highest effects of refugees. Meanwhile, Europe is the only one that experienced mild movements in those time scale (Figure 1). The world map effectively a quick pattern overview of regions entailing the disrupt transition of of their people oversea, which we can summarize essential events with outside sources over certain times happened in the regarding countries:
+
+* 2006–2009: Iraq & Afghanistan wars, instability in Pakistan, Darfur conflict with Sudan (Global Policy Forum & Willner-Reid, 2017).
+
+* 2010–2012: Likely decrease due to policy changes; relative stability in Iraq (Kaufmann & Mamaux, 2008, UNHCR Iraq Operation, 2012).
+
+* 2013–2015: Syrian Civil War intensifies, African conflicts worsen, international migration crisis (CFR, 2024).
+
+
+```{r Figure-1-Gobal-Refugee-Movement-2008-and-2015}
+# Load required libraries
+library(ggplot2)
+library(rworldmap)
+library(scales)
+library(dplyr)
+library(gridExtra)  # For arranging multiple plots on one page
+
+# Load dataset
+refugee_data <- read.csv("data/refugee_cleaned_dataset.csv")
+
+# Specify the years of interest
+year1 <- 2008
+year2 <- 2015
+
+# Filter data for each selected year
+data_2008 <- refugee_data %>% filter(Year == year1)
+data_2015 <- refugee_data %>% filter(Year == year2)
+
+# Get world map data and remove Antarctica
+world_map <- map_data("world") %>% filter(region != "Antarctica")
+
+# Merge the refugee data with the world map for 2008
+merged_data_2008 <- world_map %>%
+  left_join(data_2008, by = c("region" = "Country"))
+
+# Merge the refugee data with the world map for 2015
+merged_data_2015 <- world_map %>%
+  left_join(data_2015, by = c("region" = "Country"))
+
+# Create the static plot for 2008
+p2008 <- ggplot(merged_data_2008, aes(x = long, y = lat, 
+                                      group = group, fill = Count)) +
+  geom_polygon(color = "black", size = 0.2) +
+  coord_fixed(ratio = 1.3) +
+  scale_fill_gradient2(
+    low = "grey", mid = "blue", high = "red", 
+    midpoint = median(data_2008$Count, na.rm = TRUE),
+    na.value = "white",
+    labels = scales::comma_format(big.mark = ",")
+  ) +
+  labs(title = paste("Refugees in", year1),
+       fill = "Refugee") +
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "right",
+        plot.title = element_text(hjust = 0.5, size = 16, face = "bold")) +
+  annotate("text", x = Inf, y = -Inf,
+           label = "Figure 1: Global refugee movement in 2008", 
+           hjust = 1.1, vjust = -0.5, color = "grey")
+
+# Create the static plot for 2015
+p2015 <- ggplot(merged_data_2015, 
+                aes(x = long, y = lat, group = group, fill = Count)) +
+  geom_polygon(color = "black", size = 0.2) +
+  coord_fixed(ratio = 1.3) +
+  scale_fill_gradient2(
+    low = "grey", mid = "blue", high = "red", 
+    midpoint = median(data_2015$Count, na.rm = TRUE),
+    na.value = "white",
+    labels = scales::comma_format(big.mark = ",")
+  ) +
+  labs(title = paste("Refugee Movement in", year2),
+       fill = "Refugee") +
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.position = "right",
+        plot.title = element_text(hjust = 0.5, size = 16, face = "bold")) +
+  annotate("text", x = Inf, y = -Inf,
+           label = "Figure 1: Global refugee movement in 2015", 
+           hjust = 1.1, vjust = -0.5, color = "grey")
+
+# Option 1: Print the plots separately in your R Markdown document
+print(p2008)
+print(p2015)
+
+```
+
+## b. Yearly Trend  
+
+To bring it together, let us summarize those patterns into timeseries of movements fom thsoe international conficts to see which region is affected the most by the transitioned population in those periods. The graph shows the year-on-year (YoY) fluctuation in refugee grants by continents with which Aisa and Africa, which was considered mostly unstable in international and internal politics and economic development at those times, encountered the highest growth of refugees with Asia being the top (Figure 2). What interesting is Asia gained the most momentum at 2009 after the global financial crisis in 2008, while Africa was at its peak in 2015 during politcal shifts. On the other hand, Europe and the Americas had smaller oscillations with more controlled immigration policies, political stability, and economic development.
+
+* 2007–2009: Steep rise in Asia, peaking in 2009 due to Iraq, Afghanistan, and Pakistan conflicts (APIA Scholars, 2019). 
+
+* 2010–2011: Sharp drop in Asia, possibly due to policy changes, while Africa and Europe remained stable (International Organization for Migration, 2023). 
+
+* 2012–2015: Africa saw steady growth, especially in 2013 and 2015, driven by South Sudan, Somalia, and Syrian conflicts (International Organization for Migration, 2023; Fransen & Haas, 2022). 
+
+**Key Insight: Asia led early surges, but Africa dominated later years, reflecting shifting refugee crises and policy responses.**
+
+
+```{r Figure-2-Year-trend-by-continent, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(scales)
+
+# Filter data to remove non-country rows if necessary
+refugee_data <- refugee_data %>%
+  filter(!Continent_Standardized %in% c("Unknown", "Other"))
+
+# Aggregate data by continent and year
+continent_data <- refugee_data %>%
+  group_by(Year, Continent_Standardized) %>%
+  summarise(Total_Refugees = sum(Count, na.rm = TRUE), .groups = "drop")
+
+# Define color palette for continents
+continent_colors <- c(
+  "Asia" = "#d7191c",
+  "Africa" = "#fdae61",
+  "Americas" = "#38b6ff",
+  "Europe" = "#02de6e"
+)
+
+# Order the continents for legend
+continent_data$Continent_Standardized <- 
+  factor(continent_data$Continent_Standardized, 
+levels = c("Asia", "Africa", "Americas", "Europe"))
+
+# Create the ggplot
+p2 <- ggplot(continent_data, aes(x = Year, y = Total_Refugees, 
+                                color = Continent_Standardized, 
+                                group = Continent_Standardized)) +
+  geom_line(linewidth = 1) +  
+  # Use `linewidth` instead of `size` in newer ggplot2
+  geom_point(size = 3) +
+  scale_color_manual(values = continent_colors, name = "Continent") +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_continuous(breaks = seq(min(continent_data$Year), 
+                                  max(continent_data$Year), by = 1)) +
+  labs(
+    x = "Year", 
+    y = "Total Refugees",
+    title = "Refugee Trends Over Time by Continent",
+    caption = "Figure 2: Refugee Trends Over Time by Continent"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey50"),
+    axis.title = element_text(color = "grey20"),
+    plot.caption = element_text(color = "grey60"),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 10),  
+    # Smaller legend title
+    legend.text = element_text(size = 8),  # Smaller legend text
+    legend.direction = "vertical",
+    legend.box = "vertical"
+  )
+
+# Print the static ggplot 
+print(p2)
+
+# Save the plot as a PNG file with a white background
+ggsave("output/refugee_trends_by_continent.pdf",
+       plot = p2, width = 10, height = 6, dpi = 300, bg = "white")
+
+
+```
+
+
+
+
+## c. Top 5 Home Countries with the most refugees from 2006 to 2015 
+
+Since we can see that Asia and Africa were the most contributing constructs to the migration from 2006 to 2015, the countries of those continents were likely to appeal to the timeseries. For clear clarification, the top five countries with greatest migration values over the years are filtered to comprehensively digest the trend and context. Refered by Figure 3, Burma and Iraq stand out with population over 100 thousand in total, whereas the other three, including Bhutan, Somalia, and Iran are less than 100 thousand.
+
+The United States resettled large numbers of refugees and asylees from Burma (Myanmar), Iraq, Bhutan, Somalia, and Iran. Armed conflicts, political instability, persecution, and humanitarian crises were the primary causes of migration. As outlined in the 2015 Refugees and Asylees Annual Flow Report by the U.S. Department of Homeland Security, each of these groups had stark differences in their migration.
+
+```{r Figure-3-Top-5-home-refugee-countries}
+# Filter the data for the top five countries
+top_countries <- c("Burma", "Iraq", "Iran", "Somalia", "Bhutan")
+filtered_data <- refugee_data %>%
+  filter(Country %in% top_countries)
+
+# Summarize the total refugee counts for each country
+total_counts <- filtered_data %>%
+  group_by(Country) %>%
+  summarize(TotalCount = sum(Count))
+
+# Order the countries by total refugee counts
+total_counts <- total_counts %>%
+  mutate(Country = factor(Country, levels = total_counts %>%
+                            arrange(desc(TotalCount)) %>%
+                            pull(Country)))
+
+# Create the bar chart with the ordered top five countries
+ggplot(total_counts, aes(x = Country, y = TotalCount, fill = Country)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  scale_fill_manual(values = c("Burma" = "#d7191c", 
+                               "Iraq" = "#fdae61", 
+                               "Iran" = "#02de6e", 
+                               "Somalia" = "#38b6ff", 
+                               "Bhutan" = "#dd6dff")) +
+  scale_y_continuous(labels = scales::comma) +  
+  # Format y-axis values with commas
+  labs(x = "Country", y = "Total Refugee",
+       title = "Total Refugee of Top Five Countries",
+       subtitle = "Overall Refugee",
+       caption = "Figure 3: Total Refugee of Top Five Countries") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey50"),
+    axis.title = element_text(color = "grey20"),
+    plot.caption = element_text(color = "grey60"),
+    legend.position = "none"
+  )
+```
+**The primary push factors that compel people from Myanmar, Iraq, Bhutan, Somalia, and Iran to leave their native lands include armed conflicts, political instability, persecution, and humanitarian crises (International Organization for Migration, 2023)**
+
+Figure 4 visualizes the granualarity of those top five countries of their migration pattern with three of them acquired their strong momentums and peaks in 2008. For instance, Burmese people were migrating at its highest in 2008 around 18 thousand (18,139 to be exact) people and continued to grow still in 2015 with similar movement volume just slightly above (18,386). For other nations, the patterns appear to slow down by 2015, perhaps due to policy changes of migration of the US. Now, allow us to study the context of those home refugee countries a little bit to develop factors of why they would risk their homes to be somewhere elese they have never been before.
+
+```{r Figure-4-Annual-refugee-trend-for-the-top-five, message=FALSE, warning=FALSE}
+# Filter data for the selected countries
+selected_countries <- c("Burma", "Iraq", "Iran", "Somalia", "Bhutan")
+
+# Filter the data for the selected countries
+filtered_data <- refugee_data %>% 
+  filter(Country %in% selected_countries)
+
+# Order the legend items (e.g., by 2015 data or manually)
+filtered_data <- filtered_data %>%
+  mutate(Country = factor(Country, levels = c("Burma", "Iraq", "Somalia", "Bhutan", "Iran")))
+
+# Extract data for Burma in 2008 and 2015
+burma_2008 <- filtered_data %>% filter(Country == "Burma" & Year == 2008)
+burma_2015 <- filtered_data %>% filter(Country == "Burma" & Year == 2015)
+
+# Create a static ggplot
+p4 <- ggplot(filtered_data, aes(
+  x = Year, 
+  y = Count, 
+  color = Country, 
+  group = Country
+)) +
+  geom_line(size = 1, aes(linetype = ifelse(is.na(Count), "dotted", "solid"))) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c(
+    "Burma" = "#d7191c",
+    "Iraq" = "#fdae61",
+    "Iran" = "#02de6e",
+    "Somalia" = "#38b6ff",
+    "Bhutan" = "#dd6dff"
+  )) +
+  scale_y_continuous(limits = c(0, 25000), labels = scales::comma) +  
+  # Set y-axis limit to 25,000
+  scale_x_continuous(breaks = seq(2006, 2020, by = 1)) +  # Show exact years
+  labs(
+    x = "Year", 
+    y = "Refugee",
+    title = "Top Five Refugee Trend Over Time",
+    subtitle = "Countries: Myanmar, Iraq, Iran, Somalia, and Bhutan",
+    caption = "Figure 4: Top Five Refugee Trend Over Time"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey50"),
+    axis.title = element_text(color = "grey20"),
+    plot.caption = element_text(color = "grey"),
+    legend.position = "right"
+  ) +
+  guides(linetype = FALSE) +  # Remove dotted/solid legend
+  geom_label(aes(x = 2008, y = burma_2008$Count, label = scales::comma(burma_2008$Count)),
+             vjust = -1, color = "white", fill = "#d7191c") +
+  geom_label(aes(x = 2015, y = burma_2015$Count, label = scales::comma(burma_2015$Count)),
+             vjust = -1, color = "white", fill = "#d7191c") +
+  geom_segment(aes(x = 2008, y = burma_2008$Count + 2000, 
+                   xend = 2008, yend = burma_2008$Count + 500), arrow = 
+                 arrow(length = unit(0.02, "npc")), color = "#d7191c") +
+  geom_segment(aes(x = 2015, y = burma_2015$Count + 2000, 
+                   xend = 2015, yend = burma_2015$Count + 500), arrow = 
+                 arrow(length = unit(0.02, "npc")), color = "#d7191c")
+
+# Print the static plot
+print(p4)
+
+
+```
+
+**Figure 4 shows a timeseries of refugees for the Top 5 countries from 2008 and 2015 because the highest refugee outflows came from Burma (Myanmar) & Iraq, while Bhutan saw a decrease, Somalia consistently increased, and Iran relatively remained stable**
+
+
+**Myanmar (Burma)**
+
+Myanmar was the largest refugee group in 2008, with 18,139 individuals, and in 2015, with 18,386 individuals resettled in the U.S., accounting for 26.3% of total refugee admissions (Batalova, 2021). Displacement was primarily due to ethnic and political persecution of Rohingya, Karen, and Chin minorities, who experienced severe discrimination under the military regime (Lewa, 2015). Economic hardship, exacerbated by systemic discrimination and limited access to resources, also contributed to the exodus (International Crisis Group, 2011). While the 2008 global financial crisis had a limited direct impact on Myanmar due to its isolated economy, it did contribute to a slowdown in regional trade, potentially affecting livelihoods and increasing economic pressures on vulnerable populations (Asian Development Bank, 2009).
+
+**Iraq**
+
+Iraq was the second leading source of refugees, with 13,822 individuals in 2008 and 12,676 individuals (18.1%) resettled in 2015 (Batalova, 2021). From 2006 to 2015, more than 126,000 Iraqi refugees arrived in the U.S., fleeing political instability following the 2003 U.S. invasion, sectarian conflict, and violence targeting individuals affiliated with U.S. forces (Ratha, 2017). The destruction of infrastructure and economic disruption caused by the war significantly impacted livelihoods, pushing many to seek refuge (Cordesman, 2009). The 2008 financial crisis indirectly affected Iraq through a decline in global oil prices, which reduced government revenue and potentially exacerbated existing economic vulnerabilities (International Monetary Fund, 2009).
+
+**Bhutan**
+
+The Bhutanese refugee community in the U.S. was made up largely of Ethnic Nepali (Lhotshampa) refugees. In 2008, 5,320 refugees were resettled, and 5,775 Bhutanese refugees (8.3%) were admitted in 2015 (Batalova, 2021). From 2006-2015, the U.S., together with UNHCR, resettled over 84,550 Bhutanese refugees (UNHCR, 2016). While ethnic cleansing was the primary driver, land confiscation and the denial of economic opportunities contributed to the Lhotshampa's displacement (Hutt, 2003). The global financial crisis had minimal direct impact on the primary drivers of Bhutanese refugees, which were rooted in ethnic and political issues.
+
+**Somalia**
+
+Somalia accounted for 2,523 refugees resettled in 2008 but increased to 8,858 refugees in 2015, which was 12.7% of the total, and over 62,500 refugees were resettled during the period from 2006 to 2015 (Batalova, 2021). Civil war, political instability, and terrorism were the reasons for the displacement (Menkhaus, 2007). Prolonged drought, famine, and the collapse of the Somali economy have created severe economic hardship (World Bank, 2018). The 2008 financial crisis contributed to increased global food price volatility, exacerbating existing food insecurity in Somalia and potentially contributing to further displacement (FAO, 2009).
+
+**Iran**
+
+In 2008, 5,270 Iranians resettled, but it increased to 3,109 (4.4%) in the U.S. in 2015 (Batalova, 2021). Between 2006 and 2015, over 34,800 Iranian refugees were resettled, the majority of whom were political dissidents, religious minorities, and human rights activists (Human Rights Watch, 2015). Economic sanctions and mismanagement have led to high unemployment and inflation (Katouzian, 2010). The global financial crisis, combined with existing sanctions, further pressured Iran's economy, potentially contributing to increased emigration among those with the means to leave (Pollack, 2013).
+
+The contexts aligns with the data particularly well in the sense of terrorism, civil wars, politics, and economic downturns as a result of those conflicts and international trade agreement affects; especially revolving around the year 2008 and 2015, giving us a dimension of distinct factors imposing the migration.
+
+Therefore, Figure 5 facets those critical countries' refugee conditions in those two particular years, 2008 and 2015.Clearly, it can be grasped that the end year (2015) accounted more conditional immigrants than the beginning year (2008); though, it previously indicates a diminshing trend for most of the countries eventually. This is primarily because of the weight of Burma, inducing the increased trend, by their ethnic prosecution of their continuous military and ethnic disparity maneuver.Overall, the trend conveys a negative message of more people seeking refuge in the US as time progressed from various tensions, which made the US a tight spot for controling their migration policies and spending more security on camps and asylums.
+
+```{r Figure-5-Refugee-for-top-five-countries-in-2008-and-2015}
+# Filter the data for the top five countries in 2008 and 2015
+top_countries <- c("Burma", "Iraq", "Iran", "Somalia", "Bhutan")
+filtered_data <- refugee_data %>%
+  filter(Country %in% top_countries & Year %in% c(2008, 2015))
+
+# Order the countries by refugee counts in 2015 from highest to lowest
+filtered_data <- filtered_data %>%
+  mutate(Country = factor(Country, levels = filtered_data %>%
+                            filter(Year == 2015) %>%
+                            arrange(desc(Count)) %>%
+                            pull(Country)))
+
+# Calculate total refugees for each year
+total_refugees <- filtered_data %>%
+  group_by(Year) %>%
+  summarise(Total = sum(Count, na.rm = TRUE))
+
+# Create labels for the legend with total counts
+legend_labels <- total_refugees %>%
+  mutate(Label = paste0(Year, ": ", scales::comma(Total))) %>%
+  arrange(Year) %>%
+  pull(Label)
+
+# Create a pyramid chart with a better color palette and tilted x-axis labels
+p5 <- ggplot(filtered_data, aes(x = Country, 
+                               y = ifelse(Year == 2008, -Count, 
+                                          Count), fill = as.factor(Year))) +
+  geom_bar(stat = "identity", position = "identity", width = 0.7) +
+  scale_y_continuous(labels = function(x) scales::comma(abs(x)), 
+                     breaks = seq(-25000, 25000, by = 5000)) +  
+  # Extend y-axis limits
+  coord_flip() +
+  scale_fill_manual(values = c("2008" = "#38b6ff", "2015" = "#02de6e"),
+                    labels = legend_labels,  
+                    # Use custom labels for the legend
+                    name = "Year (Total Refugees)") +
+  labs(x = "Country", y = "Refugee",
+       title = "Refugee for Top Five Countries in 2008 and 2015",
+       caption = "Figure 5: Refugee for Top Five Countries in 2008 and 2015") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey50"),
+    axis.title = element_text(color = "grey20"),
+    plot.caption = element_text(color = "grey60"),
+    legend.position = "right",
+    axis.text.x = element_text(angle = 90, hjust = 1)  # Tilt x-axis labels to 90 degrees
+  )
+
+# Display the plot
+p5
+
+# Save the plot as a PNG file with a white background
+ggsave("output/refugee_pyramid_chart.png",
+       plot = p5, width = 8, height = 6, dpi = 300, bg = "white")
+
+```
+# 3.Political and Economic Factor Influence
+
+Sequentially, those top countries' population displacement were both impacted by both financial and political consideration in the year 2008 and 2010. As compelled earlier, 2008 mainly discussed the involvement of global financial crisis with America, whereas 2015 encapsulated political matters. Now, we have two clear distinct but connected dimensions to impose changes of refugees in those years. The question is which factor intends to influence which of those countries more.
+
+```{r Figure-6-Politcial-and-economic-factor-influence}
+# Load the necessary libraries
+library(ggrepel)
+
+# Filter data for the years 2008 and 2015
+data_2008 <- subset(refugee_data, Year == 2008)
+data_2015 <- subset(refugee_data, Year == 2015)
+
+# Merge data for the years 2008 and 2015
+merged_data <- merge(data_2008, data_2015, by = "Country", suffixes = c("_2008", "_2015"))
+
+# Correctly assign continent classification
+merged_data$Continent <- ifelse(merged_data$Country %in% 
+                                  c("Burma", "Iraq", "Iran", "Bhutan"), 
+                                "Asia", "Africa")
+
+# Determine the label color based on the hypotenuse line threshold
+merged_data$label_color <- ifelse(merged_data$Count_2015 > merged_data$Count_2008, 
+                                  "red", "blue")
+
+# Create the plot with customizations
+p6 <- ggplot(merged_data, aes(x = Count_2015, y = Count_2008, color = Continent)) +
+  geom_point(size = 3) +  # Increase the size of the data points
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  geom_label_repel(data = subset(merged_data, Country %in% 
+                                   c("Burma", "Iraq", "Iran", "Somalia", "Bhutan")),
+                   aes(label = Country, fill = label_color),
+                   color = "white",
+                   segment.color = "grey50",  # Color of the annotation lines
+                   segment.size = 0.8,  # Thickness of the annotation lines
+                   box.padding = 0.5,  # Distance between label and point
+                   point.padding = 0.2, # Prevent overlap with points
+                   direction = "both") +  # Allow labels to move freely
+  scale_color_manual(values = c("Asia" = "darkgreen", "Africa" = "orange")) +
+  scale_fill_identity() +
+  scale_x_continuous(limits = c(0, max(merged_data$Count_2015) + 2000), 
+                     labels = scales::comma) +  
+  scale_y_continuous(limits = c(0, max(merged_data$Count_2008) + 2000), 
+                     labels = scales::comma) +  
+  labs(x = "Refugees in 2015", y = "Refugees in 2008",
+       title = "Refugee Factor Comparison: 2008 vs. 2015",
+       subtitle = "Countries with labeled data points: Burma, Iraq, Iran, Somalia, and Bhutan",
+       caption = "Figure 6: Refugee Factor Comparison between 2008 vs. 2015") +
+  annotate("text", x = max(merged_data$Count_2015) * 0.05, 
+           y = max(merged_data$Count_2008) * 0.95, 
+           label = "Financial Factor", color = "lightblue", 
+           fontface = "bold", angle = 90, hjust = 1) +
+  annotate("text", x = max(merged_data$Count_2015) * 0.95, 
+           y = max(merged_data$Count_2008) * 0.05, 
+           label = "Political Factor", color = "#FFCCCB", fontface = "bold", hjust = 1) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "white", color = NA),  
+    panel.background = element_rect(fill = "white", color = NA),  
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey50"),
+    axis.title = element_text(color = "grey20"),  
+    plot.caption = element_text(color = "grey60"),  
+    legend.position = "top"
+  )
+
+# Print the plot
+print(p6)
+
+# Save the plot as a PNG file with a white background
+ggsave("output/refugee_factor_comparison.png",
+       plot = p6, width = 10, height = 6, dpi = 300, bg = "white")
+
+```
+
+In these time periods, only Asia and Africa constitute their histories as the highest dominant refugee continents.The top five demonstrated home nations of refugees are emphasized by the labels with two different colors regarding their weight over whether Financial or Political construct.Bhuthan (Asia) and Somalia (Africa) visibily position themselves as nations who were influenced most by political affairs for the displacement of their people. These political conflicts seem to prolong the refugee trends since 2008 where people tended to be more feared and hopeless of their home regimes and that the local governments were becoming aggressive with their ambitions over the welfare of human rights and sustainability. Conditionally, in the case of Burma, it is hard to classify their influence as both years were the most peaking times of migration. As shown in Figure 4 and discussed, their economy infrastructure was least impacted by the global crisis of 2008; hence, it is specially their military dictatorship that forces the people to place their hopes in the US. Further, Iraq and Iran had most their influence weights over the financial impact dimension due to their main trade agreements of oil with the America with other sanctions and wars that destroyed their own economy, which are the reason for their people to seek better financial opportunities and livelihoods else where.They also indicated a decrease of people migrating to the US since 2008, this is probably due to the guarding restriction of those countries or the US policies.
+
+# 4. Conclusion
+
+The displacement of refugees from Myanmar, Iraq, Bhutan, Somalia, and Iran between 2008 and 2015 was driven by a complex interplay of political and economic factors. While Myanmar and Somalia experienced prolonged displacement due to political instability and ethnic persecution, Iraq and Iran’s migration trends were largely influenced by economic downturns and sanctions. Bhutan’s refugee crisis stemmed primarily from ethnic exclusion. The 2008 financial crisis exacerbated economic hardships, while 2015 was marked by intensified political conflicts. Ultimately, refugee movements reflect broader global crises, demonstrating the profound impact of governance, economic stability, and international policies on forced migration.
+
+# 5. Reference
+
+
+Asian & Pacific Islander American Scholars (APIA Scholars). (2019). Refugees from Burma/Myanmar and Bhutan in the United States: A demographic profile. APIA Scholars. Retrieved from https://apiascholars.org/wp-content/uploads/2019/04/APIASF_Burma_Bhutan_Report.pdf
+
+
+Batalova, J. (2021, August 26). Refugees and asylees in the United States. Migration Policy Institute. https://www.migrationpolicy.org/article/refugees-and-asylees-united-states
+
+
+Batalova, J. (2021, May 12). Refugees and Asylees in the United States. Migrationpolicy.org. https://www.migrationpolicy.org/article/refugees-and-asylees-united-states-2021?utm
+
+
+CFR.org Editors. (2024, December 20). Syria’s civil war: The descent into horror. Council on Foreign Relations. https://www.cfr.org/article/syrias-civil-war
+
+
+Fransen, S., & de Haas, H. (2022). Trends and Patterns of Global Refugee Migration. Population and development review, 48(1), 97–128. https://doi.org/10.1111/padr.12456
+
+
+Global Policy Forum. (n.d.). Iraq's humanitarian crisis. Retrieved from https://archive.globalpolicy.org/humanitarian-issues-in-iraq/consequences-of-the-war-and-occupation-of-iraq/35742.html
+
+
+Human Rights Watch. (2015, May 13). Iran: Religious minorities face pervasive abuses. https://www.hrw.org/news/2015/05/13/iran-religious-minorities-face-pervasive-abuses
+
+
+International Organization for Migration. (2023). World Migration Report 2024: Chapter 2: Refugees and asylum-seekers. https://worldmigrationreport.iom.int/what-we-do/world-migration-report-2024-chapter-2/refugees-and-asylum-seekers
+
+
+International Organization for Migration. (2023). World Migration Report 2024: Chapter 3: Africa. https://worldmigrationreport.iom.int/what-we-do/world-migration-report-2024-chapter-3/africa
+
+
+Kaufmann, M., & Mamaux, L. M. (2008, April 28). Iraqi refugee crisis: The calm before the storm? Commission on Security and Cooperation in Europe. https://www.csce.gov/articles/iraqi-refugee-crisis-calm-storm/
+
+
+Lewa, C. (2015). Outcast: Persecution of Rohingya Muslims in Burma. Human Rights Watch.
+
+
+Menkhaus, K. (2007). Somalia: State collapse and the threat of terrorism. Adelphi Paper, 47(396), 7-76.
+
+
+Migration Policy Institute. (2015). Frequently requested statistics on immigrants and immigration in the United States. https://www.migrationpolicy.org/article/frequently-requested-statistics-immigrants-and-immigration-united-states-2015
+
+
+Ratha, D. (2017). The age of migration and remittances. World Bank Publications.
+
+
+UNHCR. (2016, December 19). Bhutanese refugees: Resettlement concludes with over 100,000 having found new homes. https://www.unhcr.org/news/press/2016/12/58564f524/bhutanese-refugees-resettlement-concludes-over-100000-having-found-new.html
+
+
+UNHCR Iraq Operation. (2012, November). Monthly Statistical Update on Return – November 2012. ReliefWeb. https://reliefweb.int/report/iraq/unhcr-iraq-operation-monthly-statistical-update-return-%E2%80%93-november-2012
+
+
+U.S. Department of Homeland Security, Office of Immigration Statistics. (2016, November). Refugees and asylees: 2015 annual flow report. U.S. Department of Homeland Security. Retrieved from https://www.dhs.gov/immigration-statistics
+
+
+Willner-Reid, M. (2017, November 16). Afghanistan: Displacement challenges in a country on the move. Migration Policy Institute. Retrieved from https://www.migrationpolicy.org/article/afghanistan-displacement-challenges-country-move
+
+
